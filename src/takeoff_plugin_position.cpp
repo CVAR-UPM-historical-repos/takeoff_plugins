@@ -46,6 +46,7 @@ namespace takeoff_plugin_position
         rclcpp_action::GoalResponse onAccepted(const std::shared_ptr<const as2_msgs::action::TakeOff::Goal> goal) override
         {
             desired_speed_ = goal->takeoff_speed;
+            RCLCPP_INFO(node_ptr_->get_logger(), "Take off speed: %f", desired_speed_);
             desired_height_ = goal->takeoff_height;
             return rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
         }
@@ -63,7 +64,7 @@ namespace takeoff_plugin_position
             auto feedback = std::make_shared<as2_msgs::action::TakeOff::Feedback>();
             auto result = std::make_shared<as2_msgs::action::TakeOff::Result>();
 
-            static as2::motionReferenceHandlers::PositionMotion motion_handler_speed(node_ptr_);
+            static as2::motionReferenceHandlers::PositionMotion motion_handler_pose(node_ptr_);
             static as2::motionReferenceHandlers::HoverMotion motion_handler_hover(node_ptr_);
 
             while (!odom_received_)
@@ -77,6 +78,7 @@ namespace takeoff_plugin_position
                     return false;
                 }
                 loop_rate.sleep();
+                RCLCPP_INFO(node_ptr_->get_logger(), "Waiting for odometry...");
             }
 
             desired_height_ += actual_heigth_;
@@ -86,6 +88,8 @@ namespace takeoff_plugin_position
             float desired_pos_y = actual_position_.y();
             float desired_yaw = as2::FrameUtils::getYawFromQuaternion(actual_q_);
             pose_mutex_.unlock();
+
+            RCLCPP_INFO(node_ptr_->get_logger(), "Desired take off position: %f, %f, %f", desired_pos_x, desired_pos_y, desired_yaw);
 
             // Check if goal is done
             while (!checkGoalCondition())
@@ -99,7 +103,7 @@ namespace takeoff_plugin_position
                     return false;
                 }
 
-                motion_handler_speed.sendPositionCommandWithYawAngle(desired_pos_x, desired_pos_y, desired_height_, desired_yaw, desired_speed_, desired_speed_, desired_speed_);
+                motion_handler_pose.sendPositionCommandWithYawAngle(desired_pos_x, desired_pos_y, desired_height_, desired_yaw, desired_speed_, desired_speed_, desired_speed_);
 
                 feedback->actual_takeoff_height = actual_heigth_;
                 feedback->actual_takeoff_speed = actual_z_speed_;
@@ -112,7 +116,7 @@ namespace takeoff_plugin_position
             goal_handle->succeed(result);
             RCLCPP_INFO(node_ptr_->get_logger(), "Goal succeeded");
             // TODO: change this to hover?
-            motion_handler_speed.sendPositionCommandWithYawAngle(desired_pos_x, desired_pos_y, desired_height_, desired_yaw, desired_speed_, desired_speed_, desired_speed_);
+            motion_handler_pose.sendPositionCommandWithYawAngle(desired_pos_x, desired_pos_y, desired_height_, desired_yaw, desired_speed_, desired_speed_, desired_speed_);
             return true;
         }
 
