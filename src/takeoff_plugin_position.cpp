@@ -105,9 +105,10 @@ namespace takeoff_plugin_position
 
                 motion_handler_pose.sendPositionCommandWithYawAngle(desired_pos_x, desired_pos_y, desired_height_, desired_yaw, desired_speed_, desired_speed_, desired_speed_);
 
-                feedback->actual_takeoff_height = actual_heigth_;
-                feedback->actual_takeoff_speed = actual_z_speed_;
-                goal_handle->publish_feedback(feedback);
+                // FREEZES BEHAVIOUR TREE RESULT
+                // feedback->actual_takeoff_height = actual_heigth_;
+                // feedback->actual_takeoff_speed = actual_z_speed_;
+                // goal_handle->publish_feedback(feedback);
 
                 loop_rate.sleep();
             }

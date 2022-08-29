@@ -96,9 +96,10 @@ namespace takeoff_plugin_speed
 
                 motion_handler_speed.sendSpeedCommandWithYawSpeed(0.0, 0.0, desired_speed_, 0.0);
 
-                feedback->actual_takeoff_height = actual_heigth_;
-                feedback->actual_takeoff_speed = actual_z_speed_;
-                goal_handle->publish_feedback(feedback);
+                // FREEZES BEHAVIOUR TREE RESULT
+                // feedback->actual_takeoff_height = actual_heigth_;
+                // feedback->actual_takeoff_speed = actual_z_speed_;
+                // goal_handle->publish_feedback(feedback);
 
                 loop_rate.sleep();
             }
