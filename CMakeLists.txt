@@ -18,6 +18,7 @@ set(PROJECT_DEPENDENCIES
   std_srvs
   as2_core
   as2_msgs
+  mbzirc_msgs
   geometry_msgs
   motion_reference_handlers
 )

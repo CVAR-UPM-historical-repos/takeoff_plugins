@@ -37,16 +37,21 @@
 #include "motion_reference_handlers/hover_motion.hpp"
 #include "motion_reference_handlers/speed_motion.hpp"
 #include "takeoff_base.hpp"
+#include "mbzirc_msgs/srv/set_pose_stamped.hpp"
 
 namespace takeoff_plugin_speed
 {
     class Plugin : public takeoff_base::TakeOffBase
     {
     public:
+
+        // // std::shared_ptr<rclcpp::Client<mbzirc_msgs::srv::SetPoseStamped>> service_client_;
+        // std::shared_ptr<as2::SynchronousServiceClient<mbzirc_msgs::srv::SetPoseStamped>> reset_cli_;
         rclcpp_action::GoalResponse onAccepted(const std::shared_ptr<const as2_msgs::action::TakeOff::Goal> goal) override
         {
             desired_speed_ = goal->takeoff_speed;
             desired_height_ = goal->takeoff_height;
+
             return rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
         }
 
@@ -54,6 +59,15 @@ namespace takeoff_plugin_speed
         {
             odom_received_ = false;
             return rclcpp_action::CancelResponse::ACCEPT;
+        }
+
+        bool checkGoalCondition()
+        {
+            if ((desired_height_ - actual_heigth_) <= 0 + this->takeoff_height_threshold_)
+            {
+                return true;
+            }
+            return false;
         }
 
         bool onExecute(const std::shared_ptr<GoalHandleTakeoff> goal_handle) override
@@ -104,10 +118,39 @@ namespace takeoff_plugin_speed
                 loop_rate.sleep();
             }
 
+            // motion_handler_hover.sendHover();
+            motion_handler_speed.sendSpeedCommandWithYawSpeed(0.0, 0.0, 0.0, 0.0);
+
+            rclcpp::Time start_time = node_ptr_->now();
+            rclcpp::Time end_time = node_ptr_->now();
+            rclcpp::Duration duration = end_time - start_time;
+            RCLCPP_INFO(node_ptr_->get_logger(), "Waiting for %f seconds", 4.0f);
+            while (duration.seconds() < 4.0f)
+            {
+                end_time = node_ptr_->now();
+                duration = end_time - start_time;
+            }
+
+            auto request =  mbzirc_msgs::srv::SetPoseStamped::Request();
+            auto response = mbzirc_msgs::srv::SetPoseStamped::Response();
+            geometry_msgs::msg::PoseStamped pose_;
+            pose_.header.frame_id = "earth";
+            pose_.header.stamp = node_ptr_->now();
+            
+            pose_mutex_.lock();
+            request.pose.pose.position.x = actual_position_.x();
+            request.pose.pose.position.y = actual_position_.y();
+            request.pose.pose.position.z = actual_position_.z();
+            pose_mutex_.unlock();
+            auto reset_cli_ = as2::SynchronousServiceClient<mbzirc_msgs::srv::SetPoseStamped>(
+                "reset");
+            bool out = reset_cli_.sendRequest(request, response);
+
+            // motion_handler_hover.sendHover();
+            motion_handler_speed.sendSpeedCommandWithYawSpeed(0.0, 0.0, 0.0, 0.0);
             result->takeoff_success = true;
             goal_handle->succeed(result);
             RCLCPP_INFO(node_ptr_->get_logger(), "Goal succeeded");
-            motion_handler_hover.sendHover();
             return true;
         }
 
