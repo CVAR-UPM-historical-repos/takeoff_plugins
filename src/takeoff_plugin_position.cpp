@@ -105,6 +105,12 @@ namespace takeoff_plugin_position
 
                 motion_handler_pose.sendPositionCommandWithYawAngle(desired_pos_x, desired_pos_y, desired_height_, desired_yaw, desired_speed_, desired_speed_, desired_speed_);
 
+                pose_mutex_.lock();
+                float desired_pos_x = actual_position_.x();
+                float desired_pos_y = actual_position_.y();
+                float desired_yaw = as2::FrameUtils::getYawFromQuaternion(actual_q_);
+                pose_mutex_.unlock();
+
                 // FREEZES BEHAVIOUR TREE RESULT
                 // feedback->actual_takeoff_height = actual_heigth_;
                 // feedback->actual_takeoff_speed = actual_z_speed_;
