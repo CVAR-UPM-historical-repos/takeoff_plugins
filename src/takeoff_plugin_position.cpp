@@ -86,7 +86,7 @@ namespace takeoff_plugin_position
             pose_mutex_.lock();
             float desired_pos_x = actual_position_.x();
             float desired_pos_y = actual_position_.y();
-            float desired_yaw = as2::FrameUtils::getYawFromQuaternion(actual_q_);
+            float desired_yaw = as2::frame::getYawFromQuaternion(actual_q_);
             pose_mutex_.unlock();
 
             RCLCPP_INFO(node_ptr_->get_logger(), "Desired take off position: %f, %f, %f", desired_pos_x, desired_pos_y, desired_height_);
