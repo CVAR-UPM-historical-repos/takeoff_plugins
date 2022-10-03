@@ -66,6 +66,8 @@ namespace takeoff_plugin_speed
             static as2::motionReferenceHandlers::SpeedMotion motion_handler_speed(node_ptr_);
             static as2::motionReferenceHandlers::HoverMotion motion_handler_hover(node_ptr_);
 
+            std::string frame_id_twist = as2::tf::generateTfName(node_ptr_->get_namespace(), frame_id_twist_);
+
             while (!odom_received_)
             {
                 if (goal_handle->is_canceling())
@@ -90,11 +92,11 @@ namespace takeoff_plugin_speed
                     goal_handle->canceled(result);
                     RCLCPP_WARN(node_ptr_->get_logger(), "Goal canceled");
                     // TODO: change this to hover
-                    motion_handler_speed.sendSpeedCommandWithYawSpeed(0.0, 0.0, 0.0, 0.0);
+                    motion_handler_speed.sendSpeedCommandWithYawSpeed(frame_id_twist, 0.0, 0.0, 0.0, 0.0);
                     return false;
                 }
 
-                motion_handler_speed.sendSpeedCommandWithYawSpeed(0.0, 0.0, desired_speed_, 0.0);
+                motion_handler_speed.sendSpeedCommandWithYawSpeed(frame_id_twist, 0.0, 0.0, desired_speed_, 0.0);
 
                 feedback->actual_takeoff_height = actual_heigth_;
                 feedback->actual_takeoff_speed = actual_z_speed_;

@@ -86,10 +86,13 @@ namespace takeoff_plugin_position
             pose_mutex_.lock();
             float desired_pos_x = actual_position_.x();
             float desired_pos_y = actual_position_.y();
-            float desired_yaw = as2::FrameUtils::getYawFromQuaternion(actual_q_);
+            float desired_yaw = as2::frame::getYawFromQuaternion(actual_q_);
             pose_mutex_.unlock();
 
             RCLCPP_INFO(node_ptr_->get_logger(), "Desired take off position: %f, %f, %f", desired_pos_x, desired_pos_y, desired_height_);
+
+            std::string frame_id_pose = as2::tf::generateTfName(node_ptr_->get_namespace(), frame_id_pose_);
+            std::string frame_id_twist = as2::tf::generateTfName(node_ptr_->get_namespace(), frame_id_twist_);
 
             // Check if goal is done
             while (!checkGoalCondition())
@@ -103,7 +106,7 @@ namespace takeoff_plugin_position
                     return false;
                 }
 
-                motion_handler_pose.sendPositionCommandWithYawAngle(desired_pos_x, desired_pos_y, desired_height_, desired_yaw, desired_speed_, desired_speed_, desired_speed_);
+                motion_handler_pose.sendPositionCommandWithYawAngle(frame_id_pose, desired_pos_x, desired_pos_y, desired_height_, desired_yaw, frame_id_twist, desired_speed_, desired_speed_, desired_speed_);
 
                 feedback->actual_takeoff_height = actual_heigth_;
                 feedback->actual_takeoff_speed = actual_z_speed_;
@@ -116,7 +119,7 @@ namespace takeoff_plugin_position
             goal_handle->succeed(result);
             RCLCPP_INFO(node_ptr_->get_logger(), "Goal succeeded");
             // TODO: change this to hover?
-            motion_handler_pose.sendPositionCommandWithYawAngle(desired_pos_x, desired_pos_y, desired_height_, desired_yaw, desired_speed_, desired_speed_, desired_speed_);
+            motion_handler_pose.sendPositionCommandWithYawAngle(frame_id_pose, desired_pos_x, desired_pos_y, desired_height_, desired_yaw, frame_id_twist, desired_speed_, desired_speed_, desired_speed_);
             return true;
         }
 
