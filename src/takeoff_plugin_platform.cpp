@@ -69,7 +69,7 @@ namespace takeoff_plugin_platform
 
             auto takeoff_cli = as2::SynchronousServiceClient<std_srvs::srv::SetBool>(
                 as2_names::services::platform::takeoff,
-                node_ptr_->as2_node_shared_from_this());
+                node_ptr_);
 
             bool out = takeoff_cli.sendRequest(request, response);
 

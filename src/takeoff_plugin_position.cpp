@@ -67,6 +67,8 @@ namespace takeoff_plugin_position
             static as2::motionReferenceHandlers::PositionMotion motion_handler_pose(node_ptr_);
             static as2::motionReferenceHandlers::HoverMotion motion_handler_hover(node_ptr_);
 
+            std::string frame_id = as2::tf::generateTfName(node_ptr_->get_namespace(), frame_id_pose_);
+
             while (!odom_received_)
             {
                 if (goal_handle->is_canceling())
@@ -91,6 +93,9 @@ namespace takeoff_plugin_position
 
             RCLCPP_INFO(node_ptr_->get_logger(), "Desired take off position: %f, %f, %f", desired_pos_x, desired_pos_y, desired_height_);
 
+            std::string frame_id_pose = as2::tf::generateTfName(node_ptr_->get_namespace(), frame_id_pose_);
+            std::string frame_id_twist = as2::tf::generateTfName(node_ptr_->get_namespace(), frame_id_twist_);
+
             // Check if goal is done
             while (!checkGoalCondition())
             {
@@ -103,7 +108,7 @@ namespace takeoff_plugin_position
                     return false;
                 }
 
-                motion_handler_pose.sendPositionCommandWithYawAngle(desired_pos_x, desired_pos_y, desired_height_, desired_yaw, desired_speed_, desired_speed_, desired_speed_);
+                motion_handler_pose.sendPositionCommandWithYawAngle(frame_id_pose, desired_pos_x, desired_pos_y, desired_height_, desired_yaw, frame_id_twist, desired_speed_, desired_speed_, desired_speed_);
 
                 feedback->actual_takeoff_height = actual_heigth_;
                 feedback->actual_takeoff_speed = actual_z_speed_;
@@ -116,7 +121,7 @@ namespace takeoff_plugin_position
             goal_handle->succeed(result);
             RCLCPP_INFO(node_ptr_->get_logger(), "Goal succeeded");
             // TODO: change this to hover?
-            motion_handler_pose.sendPositionCommandWithYawAngle(desired_pos_x, desired_pos_y, desired_height_, desired_yaw, desired_speed_, desired_speed_, desired_speed_);
+            motion_handler_pose.sendPositionCommandWithYawAngle(frame_id_pose, desired_pos_x, desired_pos_y, desired_height_, desired_yaw, frame_id_twist, desired_speed_, desired_speed_, desired_speed_);
             return true;
         }
 
