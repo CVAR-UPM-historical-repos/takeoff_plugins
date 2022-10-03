@@ -67,8 +67,6 @@ namespace takeoff_plugin_position
             static as2::motionReferenceHandlers::PositionMotion motion_handler_pose(node_ptr_);
             static as2::motionReferenceHandlers::HoverMotion motion_handler_hover(node_ptr_);
 
-            std::string frame_id = as2::tf::generateTfName(node_ptr_->get_namespace(), frame_id_pose_);
-
             while (!odom_received_)
             {
                 if (goal_handle->is_canceling())
