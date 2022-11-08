@@ -11,7 +11,7 @@
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
- * 
+ *
  * 1. Redistributions of source code must retain the above copyright notice,
  *    this list of conditions and the following disclaimer.
  * 2. Redistributions in binary form must reproduce the above copyright notice,
@@ -20,7 +20,7 @@
  * 3. Neither the name of the copyright holder nor the names of its contributors
  *    may be used to endorse or promote products derived from this software
  *    without specific prior written permission.
- * 
+ *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
  * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
@@ -38,82 +38,77 @@
 #include "motion_reference_handlers/speed_motion.hpp"
 #include "takeoff_base.hpp"
 
-namespace takeoff_plugin_speed
-{
-    class Plugin : public takeoff_base::TakeOffBase
-    {
-    public:
-        rclcpp_action::GoalResponse onAccepted(const std::shared_ptr<const as2_msgs::action::TakeOff::Goal> goal) override
-        {
-            desired_speed_ = goal->takeoff_speed;
-            desired_height_ = goal->takeoff_height;
-            return rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
-        }
+namespace takeoff_plugin_speed {
+class Plugin : public takeoff_base::TakeOffBase {
+public:
+  rclcpp_action::GoalResponse onAccepted(
+      const std::shared_ptr<const as2_msgs::action::TakeOff::Goal> goal) override {
+    desired_speed_  = goal->takeoff_speed;
+    desired_height_ = goal->takeoff_height;
+    return rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
+  }
 
-        rclcpp_action::CancelResponse onCancel(const std::shared_ptr<GoalHandleTakeoff> goal_handle) override
-        {
-            odom_received_ = false;
-            return rclcpp_action::CancelResponse::ACCEPT;
-        }
+  rclcpp_action::CancelResponse onCancel(
+      const std::shared_ptr<GoalHandleTakeoff> goal_handle) override {
+    odom_received_ = false;
+    return rclcpp_action::CancelResponse::ACCEPT;
+  }
 
-        bool onExecute(const std::shared_ptr<GoalHandleTakeoff> goal_handle) override
-        {
-            rclcpp::Rate loop_rate(10);
-            const auto goal = goal_handle->get_goal();
-            auto feedback = std::make_shared<as2_msgs::action::TakeOff::Feedback>();
-            auto result = std::make_shared<as2_msgs::action::TakeOff::Result>();
+  bool onExecute(const std::shared_ptr<GoalHandleTakeoff> goal_handle) override {
+    rclcpp::Rate loop_rate(10);
+    const auto goal = goal_handle->get_goal();
+    auto feedback   = std::make_shared<as2_msgs::action::TakeOff::Feedback>();
+    auto result     = std::make_shared<as2_msgs::action::TakeOff::Result>();
 
-            static as2::motionReferenceHandlers::SpeedMotion motion_handler_speed(node_ptr_);
-            static as2::motionReferenceHandlers::HoverMotion motion_handler_hover(node_ptr_);
+    static as2::motionReferenceHandlers::SpeedMotion motion_handler_speed(node_ptr_);
+    static as2::motionReferenceHandlers::HoverMotion motion_handler_hover(node_ptr_);
 
-            std::string frame_id_twist = as2::tf::generateTfName(node_ptr_->get_namespace(), frame_id_twist_);
+    std::string frame_id_twist =
+        as2::tf::generateTfName(node_ptr_->get_namespace(), frame_id_twist_);
 
-            while (!odom_received_)
-            {
-                if (goal_handle->is_canceling())
-                {
-                    result->takeoff_success = false;
-                    goal_handle->canceled(result);
-                    RCLCPP_WARN(node_ptr_->get_logger(), "Goal canceled");
-                    motion_handler_hover.sendHover();
-                    return false;
-                }
-                loop_rate.sleep();
-            }
+    while (!odom_received_) {
+      if (goal_handle->is_canceling()) {
+        result->takeoff_success = false;
+        goal_handle->canceled(result);
+        RCLCPP_WARN(node_ptr_->get_logger(), "Goal canceled");
+        motion_handler_hover.sendHover();
+        return false;
+      }
+      loop_rate.sleep();
+    }
 
-            desired_height_ += actual_heigth_;
-            
-            // Check if goal is done
-            while (!checkGoalCondition())
-            {
-                if (goal_handle->is_canceling())
-                {
-                    result->takeoff_success = false;
-                    goal_handle->canceled(result);
-                    RCLCPP_WARN(node_ptr_->get_logger(), "Goal canceled");
-                    // TODO: change this to hover
-                    motion_handler_speed.sendSpeedCommandWithYawSpeed(frame_id_twist, 0.0, 0.0, 0.0, 0.0);
-                    return false;
-                }
+    desired_height_ += actual_heigth_;
 
-                motion_handler_speed.sendSpeedCommandWithYawSpeed(frame_id_twist, 0.0, 0.0, desired_speed_, 0.0);
+    // Check if goal is done
+    while (!checkGoalCondition()) {
+      if (goal_handle->is_canceling()) {
+        result->takeoff_success = false;
+        goal_handle->canceled(result);
+        RCLCPP_WARN(node_ptr_->get_logger(), "Goal canceled");
+        // TODO: change this to hover
+        motion_handler_speed.sendSpeedCommandWithYawSpeed(frame_id_twist, 0.0, 0.0, 0.0, 0.0);
+        return false;
+      }
 
-                feedback->actual_takeoff_height = actual_heigth_;
-                feedback->actual_takeoff_speed = actual_z_speed_;
-                goal_handle->publish_feedback(feedback);
+      motion_handler_speed.sendSpeedCommandWithYawSpeed(frame_id_twist, 0.0, 0.0, desired_speed_,
+                                                        0.0);
 
-                loop_rate.sleep();
-            }
+      feedback->actual_takeoff_height = actual_heigth_;
+      feedback->actual_takeoff_speed  = actual_z_speed_;
+      goal_handle->publish_feedback(feedback);
 
-            result->takeoff_success = true;
-            goal_handle->succeed(result);
-            RCLCPP_INFO(node_ptr_->get_logger(), "Goal succeeded");
-            motion_handler_hover.sendHover();
-            return true;
-        }
+      loop_rate.sleep();
+    }
 
-    }; // Plugin class
-} // takeoff_plugin_speed namespace
+    result->takeoff_success = true;
+    goal_handle->succeed(result);
+    RCLCPP_INFO(node_ptr_->get_logger(), "Goal succeeded");
+    motion_handler_hover.sendHover();
+    return true;
+  }
+
+};  // Plugin class
+}  // namespace takeoff_plugin_speed
 
 #include <pluginlib/class_list_macros.hpp>
 

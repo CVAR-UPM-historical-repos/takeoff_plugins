@@ -26,16 +26,32 @@ foreach(DEPENDENCY ${PROJECT_DEPENDENCIES})
   find_package(${DEPENDENCY} REQUIRED)
 endforeach()
 
-add_library(${PROJECT_NAME} src/takeoff_plugin_speed.cpp src/takeoff_plugin_position.cpp src/takeoff_plugin_platform.cpp)
+set(SOURCE_CPP_FILES
+  src/takeoff_plugin_speed.cpp
+  src/takeoff_plugin_position.cpp
+  src/takeoff_plugin_platform.cpp
+)
+
+add_library(${PROJECT_NAME} ${SOURCE_CPP_FILES})
+
 target_include_directories(${PROJECT_NAME} PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
+
 ament_target_dependencies(
   ${PROJECT_NAME}
   ${PROJECT_DEPENDENCIES}
 )
 
 pluginlib_export_plugin_description_file(takeoff_plugin_base plugins.xml)
+
+if(BUILD_TESTING)
+  find_package(ament_cmake_cppcheck REQUIRED)
+  find_package(ament_cmake_clang_format REQUIRED)
+
+  ament_cppcheck(src/ include/ tests/)
+  ament_clang_format(src/ include/ tests/ --config ${CMAKE_CURRENT_SOURCE_DIR}/.clang-format)
+endif()
 
 install(
   TARGETS ${PROJECT_NAME}
