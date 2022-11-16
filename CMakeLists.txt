@@ -17,9 +17,9 @@ set(PROJECT_DEPENDENCIES
   ament_cmake_ros
   pluginlib
   takeoff_plugin_base
+  as2_behavior
   rclcpp
   rclcpp_action
-  nav_msgs
   std_srvs
   as2_core
   as2_msgs

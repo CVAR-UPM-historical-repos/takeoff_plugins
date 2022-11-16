@@ -34,56 +34,84 @@
  * EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  ********************************************************************************/
 
-#include <motion_reference_handlers/hover_motion.hpp>
+#include <chrono>
 #include <std_srvs/srv/set_bool.hpp>
+#include "as2_behavior/behavior_server.hpp"
+#include "as2_core/names/services.hpp"
 #include "takeoff_base.hpp"
 
 namespace takeoff_plugin_platform {
+
 class Plugin : public takeoff_base::TakeOffBase {
 public:
-  rclcpp_action::GoalResponse onAccepted(
-      const std::shared_ptr<const as2_msgs::action::TakeOff::Goal> goal) override {
-    return rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
+  void ownInit() {
+    platform_takeoff_cli_ =
+        node_ptr_->create_client<std_srvs::srv::SetBool>(as2_names::services::platform::takeoff);
+    platform_takeoff_request_->data = true;
+    return;
   }
 
-  rclcpp_action::CancelResponse onCancel(
-      const std::shared_ptr<GoalHandleTakeoff> goal_handle) override {
-    return rclcpp_action::CancelResponse::ACCEPT;
-  }
+  bool own_activate(std::shared_ptr<const as2_msgs::action::TakeOff::Goal> goal) override {
 
-  bool onExecute(const std::shared_ptr<GoalHandleTakeoff> goal_handle) override {
-    rclcpp::Rate loop_rate(10);
-    const auto goal = goal_handle->get_goal();
-    auto feedback   = std::make_shared<as2_msgs::action::TakeOff::Feedback>();
-    auto result     = std::make_shared<as2_msgs::action::TakeOff::Result>();
-
-    static as2::motionReferenceHandlers::HoverMotion motion_handler_hover(node_ptr_);
-
-    // Send platform takeoff service request
-    auto request  = std_srvs::srv::SetBool::Request();
-    auto response = std_srvs::srv::SetBool::Response();
-    request.data  = true;
-
-    auto takeoff_cli = as2::SynchronousServiceClient<std_srvs::srv::SetBool>(
-        as2_names::services::platform::takeoff, node_ptr_);
-
-    bool out = takeoff_cli.sendRequest(request, response);
-
-    if (!(out && response.success)) {
-      result->takeoff_success = false;
-      goal_handle->canceled(result);
-      RCLCPP_ERROR(node_ptr_->get_logger(), "Platform takeoff service request failed");
-      motion_handler_hover.sendHover();
+    using namespace std::chrono_literals;
+    if (!platform_takeoff_cli_->wait_for_service(5s)) {
+      RCLCPP_ERROR(node_ptr_->get_logger(), "Platform takeoff service not available");
       return false;
     }
 
-    result->takeoff_success = true;
-    goal_handle->succeed(result);
-    RCLCPP_INFO(node_ptr_->get_logger(), "Goal succeeded");
-    // TODO: send this?
-    motion_handler_hover.sendHover();
+    platform_takeoff_future_ = platform_takeoff_cli_->async_send_request(platform_takeoff_request_);
+
+    if (!platform_takeoff_future_.valid()) {
+      RCLCPP_ERROR(node_ptr_->get_logger(), "Request could not be sent");
+      return false;
+    }
     return true;
   }
+
+  as2_behavior::ExecutionStatus own_run() override {
+    if (platform_takeoff_future_.valid() && platform_takeoff_future_.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+      auto result = platform_takeoff_future_.get();
+      if (result->success) {
+        result_.takeoff_success = true;
+        return as2_behavior::ExecutionStatus::SUCCESS;
+      } else {
+        result_.takeoff_success = false;
+        return as2_behavior::ExecutionStatus::FAILURE;
+      }
+    }
+    return as2_behavior::ExecutionStatus::RUNNING;
+  }
+
+  void own_execution_end(const as2_behavior::ExecutionStatus &state) {
+    RCLCPP_INFO(node_ptr_->get_logger(), "Takeoff end");
+    return;
+  }
+
+  bool on_deactivate(const std::shared_ptr<std::string> &message) override {
+    RCLCPP_INFO(node_ptr_->get_logger(), "Takeoff can not be cancelled");
+    return false;
+  }
+
+  bool on_pause(const std::shared_ptr<std::string> &message) {
+    RCLCPP_INFO(node_ptr_->get_logger(), "Takeoff can not be paused");
+    return false;
+  }
+
+  bool on_resume(const std::shared_ptr<std::string> &message) {
+    RCLCPP_INFO(node_ptr_->get_logger(), "Takeoff can not be resumed");
+    return false;
+  }
+
+  bool own_modify(std::shared_ptr<const as2_msgs::action::TakeOff::Goal> goal) override {
+    RCLCPP_INFO(node_ptr_->get_logger(), "Takeoff can not be modified");
+    return false;
+  }
+
+private:
+  rclcpp::Client<std_srvs::srv::SetBool>::SharedPtr platform_takeoff_cli_;
+
+  std_srvs::srv::SetBool::Request::SharedPtr platform_takeoff_request_;
+  rclcpp::Client<std_srvs::srv::SetBool>::SharedFuture platform_takeoff_future_;
 
 };  // Plugin class
 }  // namespace takeoff_plugin_platform
