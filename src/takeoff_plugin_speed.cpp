@@ -1,6 +1,6 @@
 /*!*******************************************************************************************
  *  \file       takeoff_plugin_speed.cpp
- *  \brief      This file contains the implementation of the go to Behaviour position plugin
+ *  \brief      This file contains the implementation of the take off behaviour speed plugin
  *  \authors    Miguel Fernández Cortizas
  *              Pedro Arias Pérez
  *              David Pérez Saura
@@ -98,7 +98,9 @@ public:
 
   void own_execution_end(const as2_behavior::ExecutionStatus &state) {
     RCLCPP_INFO(node_ptr_->get_logger(), "Takeoff end");
-    sendHover();
+    if (state == as2_behavior::ExecutionStatus::SUCCESS) {
+      sendHover();
+    }
     return;
   }
 

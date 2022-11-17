@@ -1,6 +1,6 @@
 /*!*******************************************************************************************
  *  \file       takeoff_plugin_platform.cpp
- *  \brief      Plugin for takeoff with position control
+ *  \brief      This file contains the implementation of the take off behaviour platform plugin
  *  \authors    Miguel Fernández Cortizas
  *              Pedro Arias Pérez
  *              David Pérez Saura
@@ -52,7 +52,6 @@ public:
   }
 
   bool own_activate(std::shared_ptr<const as2_msgs::action::TakeOff::Goal> goal) override {
-
     using namespace std::chrono_literals;
     if (!platform_takeoff_cli_->wait_for_service(5s)) {
       RCLCPP_ERROR(node_ptr_->get_logger(), "Platform takeoff service not available");
@@ -69,7 +68,8 @@ public:
   }
 
   as2_behavior::ExecutionStatus own_run() override {
-    if (platform_takeoff_future_.valid() && platform_takeoff_future_.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+    if (platform_takeoff_future_.valid() &&
+        platform_takeoff_future_.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
       auto result = platform_takeoff_future_.get();
       if (result->success) {
         result_.takeoff_success = true;

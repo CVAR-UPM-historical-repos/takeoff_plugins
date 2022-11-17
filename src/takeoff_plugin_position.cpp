@@ -1,6 +1,6 @@
 /*!*******************************************************************************************
  *  \file       position_motion.cpp
- *  \brief      This file contains the implementation of the go to Behaviour position plugin
+ *  \brief      This file contains the implementation of the take off behaviour position plugin
  *  \authors    Miguel Fernández Cortizas
  *              Pedro Arias Pérez
  *              David Pérez Saura
@@ -36,7 +36,7 @@
 
 #include <geometry_msgs/msg/point.hpp>
 #include "as2_behavior/behavior_server.hpp"
-#include "as2_core/utils/tf_utils.hpp"
+#include "as2_core/utils/frame_utils.hpp"
 #include "motion_reference_handlers/position_motion.hpp"
 #include "takeoff_base.hpp"
 
