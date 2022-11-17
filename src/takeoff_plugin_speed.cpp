@@ -1,6 +1,6 @@
 /*!*******************************************************************************************
  *  \file       takeoff_plugin_speed.cpp
- *  \brief      Plugin for takeoff with speed control
+ *  \brief      This file contains the implementation of the take off behaviour speed plugin
  *  \authors    Miguel Fernández Cortizas
  *              Pedro Arias Pérez
  *              David Pérez Saura
@@ -34,77 +34,84 @@
  * EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  ********************************************************************************/
 
-#include "motion_reference_handlers/hover_motion.hpp"
+#include "as2_behavior/behavior_server.hpp"
 #include "motion_reference_handlers/speed_motion.hpp"
 #include "takeoff_base.hpp"
 
 namespace takeoff_plugin_speed {
+
 class Plugin : public takeoff_base::TakeOffBase {
+private:
+  std::shared_ptr<as2::motionReferenceHandlers::SpeedMotion> speed_motion_handler_ = nullptr;
+
 public:
-  rclcpp_action::GoalResponse onAccepted(
-      const std::shared_ptr<const as2_msgs::action::TakeOff::Goal> goal) override {
-    desired_speed_  = goal->takeoff_speed;
-    desired_height_ = goal->takeoff_height;
-    return rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
+  void ownInit() {
+    speed_motion_handler_ = std::make_shared<as2::motionReferenceHandlers::SpeedMotion>(node_ptr_);
   }
 
-  rclcpp_action::CancelResponse onCancel(
-      const std::shared_ptr<GoalHandleTakeoff> goal_handle) override {
-    odom_received_ = false;
-    return rclcpp_action::CancelResponse::ACCEPT;
-  }
-
-  bool onExecute(const std::shared_ptr<GoalHandleTakeoff> goal_handle) override {
-    rclcpp::Rate loop_rate(10);
-    const auto goal = goal_handle->get_goal();
-    auto feedback   = std::make_shared<as2_msgs::action::TakeOff::Feedback>();
-    auto result     = std::make_shared<as2_msgs::action::TakeOff::Result>();
-
-    static as2::motionReferenceHandlers::SpeedMotion motion_handler_speed(node_ptr_);
-    static as2::motionReferenceHandlers::HoverMotion motion_handler_hover(node_ptr_);
-
-    std::string frame_id_twist =
-        as2::tf::generateTfName(node_ptr_->get_namespace(), frame_id_twist_);
-
-    while (!odom_received_) {
-      if (goal_handle->is_canceling()) {
-        result->takeoff_success = false;
-        goal_handle->canceled(result);
-        RCLCPP_WARN(node_ptr_->get_logger(), "Goal canceled");
-        motion_handler_hover.sendHover();
-        return false;
-      }
-      loop_rate.sleep();
-    }
-
-    desired_height_ += actual_heigth_;
-
-    // Check if goal is done
-    while (!checkGoalCondition()) {
-      if (goal_handle->is_canceling()) {
-        result->takeoff_success = false;
-        goal_handle->canceled(result);
-        RCLCPP_WARN(node_ptr_->get_logger(), "Goal canceled");
-        // TODO: change this to hover
-        motion_handler_speed.sendSpeedCommandWithYawSpeed(frame_id_twist, 0.0, 0.0, 0.0, 0.0);
-        return false;
-      }
-
-      motion_handler_speed.sendSpeedCommandWithYawSpeed(frame_id_twist, 0.0, 0.0, desired_speed_,
-                                                        0.0);
-
-      feedback->actual_takeoff_height = actual_heigth_;
-      feedback->actual_takeoff_speed  = actual_z_speed_;
-      goal_handle->publish_feedback(feedback);
-
-      loop_rate.sleep();
-    }
-
-    result->takeoff_success = true;
-    goal_handle->succeed(result);
-    RCLCPP_INFO(node_ptr_->get_logger(), "Goal succeeded");
-    motion_handler_hover.sendHover();
+  bool on_deactivate(const std::shared_ptr<std::string> &message) override {
+    RCLCPP_INFO(node_ptr_->get_logger(), "Takeoff canceled, set to hover");
+    sendHover();
     return true;
+  }
+
+  bool on_pause(const std::shared_ptr<std::string> &message) {
+    RCLCPP_INFO(node_ptr_->get_logger(), "Takeoff can not be paused");
+    return false;
+  }
+
+  bool on_resume(const std::shared_ptr<std::string> &message) {
+    RCLCPP_INFO(node_ptr_->get_logger(), "Takeoff can not be resumed");
+    return false;
+  }
+
+  bool own_activate(std::shared_ptr<const as2_msgs::action::TakeOff::Goal> goal) override {
+    RCLCPP_INFO(node_ptr_->get_logger(), "Takeoff accepted");
+    RCLCPP_INFO(node_ptr_->get_logger(), "Takeoff to height: %f", goal->takeoff_height);
+    RCLCPP_INFO(node_ptr_->get_logger(), "Takeoff with speed: %f", goal->takeoff_speed);
+    return true;
+  }
+
+  bool own_modify(std::shared_ptr<const as2_msgs::action::TakeOff::Goal> goal) override {
+    RCLCPP_INFO(node_ptr_->get_logger(), "Takeoff goal modified");
+    RCLCPP_INFO(node_ptr_->get_logger(), "Takeoff to height: %f", goal->takeoff_height);
+    RCLCPP_INFO(node_ptr_->get_logger(), "Takeoff with speed: %f", goal->takeoff_speed);
+    return true;
+  }
+
+  as2_behavior::ExecutionStatus own_run() override {
+    if (checkGoalCondition()) {
+      result_.takeoff_success = true;
+      RCLCPP_INFO(node_ptr_->get_logger(), "Goal succeeded");
+      return as2_behavior::ExecutionStatus::SUCCESS;
+    }
+
+    if (!speed_motion_handler_->sendSpeedCommandWithYawSpeed("earth", 0.0, 0.0, goal_.takeoff_speed,
+                                                             0.0)) {
+      RCLCPP_ERROR(node_ptr_->get_logger(), "Take Off PLUGIN: Error sending speed command");
+      result_.takeoff_success = false;
+      return as2_behavior::ExecutionStatus::FAILURE;
+    }
+
+    return as2_behavior::ExecutionStatus::RUNNING;
+  }
+
+  void own_execution_end(const as2_behavior::ExecutionStatus &state) {
+    RCLCPP_INFO(node_ptr_->get_logger(), "Takeoff end");
+    if (state == as2_behavior::ExecutionStatus::SUCCESS) {
+      sendHover();
+    }
+    return;
+  }
+
+private:
+  bool checkGoalCondition() {
+    if (localization_received_) {
+      if (fabs(goal_.takeoff_height - feedback_.actual_takeoff_height) <
+          params_.takeoff_height_threshold)
+        return true;
+    }
+    return false;
   }
 
 };  // Plugin class

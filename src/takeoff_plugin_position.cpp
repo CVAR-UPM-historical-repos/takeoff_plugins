@@ -1,6 +1,6 @@
 /*!*******************************************************************************************
- *  \file       takeoff_plugin_position.cpp
- *  \brief      Plugin for takeoff with position control
+ *  \file       position_motion.cpp
+ *  \brief      This file contains the implementation of the take off behaviour position plugin
  *  \authors    Miguel Fernández Cortizas
  *              Pedro Arias Pérez
  *              David Pérez Saura
@@ -34,92 +34,109 @@
  * EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  ********************************************************************************/
 
-#include "motion_reference_handlers/hover_motion.hpp"
+#include <geometry_msgs/msg/point.hpp>
+#include "as2_behavior/behavior_server.hpp"
+#include "as2_core/utils/frame_utils.hpp"
 #include "motion_reference_handlers/position_motion.hpp"
 #include "takeoff_base.hpp"
 
 namespace takeoff_plugin_position {
+
 class Plugin : public takeoff_base::TakeOffBase {
+private:
+  std::shared_ptr<as2::motionReferenceHandlers::PositionMotion> position_motion_handler_ = nullptr;
+
 public:
-  rclcpp_action::GoalResponse onAccepted(
-      const std::shared_ptr<const as2_msgs::action::TakeOff::Goal> goal) override {
-    desired_speed_ = goal->takeoff_speed;
-    RCLCPP_INFO(node_ptr_->get_logger(), "Take off speed: %f", desired_speed_);
-    desired_height_ = goal->takeoff_height;
-    return rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
+  void ownInit() {
+    position_motion_handler_ =
+        std::make_shared<as2::motionReferenceHandlers::PositionMotion>(node_ptr_);
   }
 
-  rclcpp_action::CancelResponse onCancel(
-      const std::shared_ptr<GoalHandleTakeoff> goal_handle) override {
-    odom_received_ = false;
-    return rclcpp_action::CancelResponse::ACCEPT;
-  }
-
-  bool onExecute(const std::shared_ptr<GoalHandleTakeoff> goal_handle) override {
-    rclcpp::Rate loop_rate(10);
-    const auto goal = goal_handle->get_goal();
-    auto feedback   = std::make_shared<as2_msgs::action::TakeOff::Feedback>();
-    auto result     = std::make_shared<as2_msgs::action::TakeOff::Result>();
-
-    static as2::motionReferenceHandlers::PositionMotion motion_handler_pose(node_ptr_);
-    static as2::motionReferenceHandlers::HoverMotion motion_handler_hover(node_ptr_);
-
-    while (!odom_received_) {
-      if (goal_handle->is_canceling()) {
-        result->takeoff_success = false;
-        goal_handle->canceled(result);
-        RCLCPP_WARN(node_ptr_->get_logger(), "Goal canceled");
-        motion_handler_hover.sendHover();
-        return false;
-      }
-      loop_rate.sleep();
-      RCLCPP_INFO(node_ptr_->get_logger(), "Waiting for odometry...");
-    }
-
-    desired_height_ += actual_heigth_;
-
-    pose_mutex_.lock();
-    float desired_pos_x = actual_position_.x();
-    float desired_pos_y = actual_position_.y();
-    float desired_yaw   = as2::frame::getYawFromQuaternion(actual_q_);
-    pose_mutex_.unlock();
-
-    RCLCPP_INFO(node_ptr_->get_logger(), "Desired take off position: %f, %f, %f", desired_pos_x,
-                desired_pos_y, desired_height_);
-
-    std::string frame_id_pose = as2::tf::generateTfName(node_ptr_->get_namespace(), frame_id_pose_);
-    std::string frame_id_twist =
-        as2::tf::generateTfName(node_ptr_->get_namespace(), frame_id_twist_);
-
-    // Check if goal is done
-    while (!checkGoalCondition()) {
-      if (goal_handle->is_canceling()) {
-        result->takeoff_success = false;
-        goal_handle->canceled(result);
-        RCLCPP_WARN(node_ptr_->get_logger(), "Goal canceled");
-        motion_handler_hover.sendHover();
-        return false;
-      }
-
-      motion_handler_pose.sendPositionCommandWithYawAngle(
-          frame_id_pose, desired_pos_x, desired_pos_y, desired_height_, desired_yaw, frame_id_twist,
-          desired_speed_, desired_speed_, desired_speed_);
-
-      feedback->actual_takeoff_height = actual_heigth_;
-      feedback->actual_takeoff_speed  = actual_z_speed_;
-      goal_handle->publish_feedback(feedback);
-
-      loop_rate.sleep();
-    }
-
-    result->takeoff_success = true;
-    goal_handle->succeed(result);
-    RCLCPP_INFO(node_ptr_->get_logger(), "Goal succeeded");
-    // TODO: change this to hover?
-    motion_handler_pose.sendPositionCommandWithYawAngle(
-        frame_id_pose, desired_pos_x, desired_pos_y, desired_height_, desired_yaw, frame_id_twist,
-        desired_speed_, desired_speed_, desired_speed_);
+  bool on_deactivate(const std::shared_ptr<std::string> &message) override {
+    RCLCPP_INFO(node_ptr_->get_logger(), "Takeoff canceled, set to hover");
+    sendHover();
     return true;
+  }
+
+  bool on_pause(const std::shared_ptr<std::string> &message) {
+    RCLCPP_INFO(node_ptr_->get_logger(), "Takeoff can not be paused");
+    return false;
+  }
+
+  bool on_resume(const std::shared_ptr<std::string> &message) {
+    RCLCPP_INFO(node_ptr_->get_logger(), "Takeoff can not be resumed");
+    return false;
+  }
+
+  bool own_activate(std::shared_ptr<const as2_msgs::action::TakeOff::Goal> goal) override {
+    RCLCPP_INFO(node_ptr_->get_logger(), "Takeoff accepted");
+    takeoff_position_.x = actual_pose_.pose.position.x;
+    takeoff_position_.y = actual_pose_.pose.position.y;
+    takeoff_position_.z = actual_pose_.pose.position.z + goal->takeoff_height;
+    takeoff_angle_      = as2::frame::getYawFromQuaternion(actual_pose_.pose.orientation);
+    RCLCPP_INFO(node_ptr_->get_logger(), "Takeoff to position: %f, %f, %f", takeoff_position_.x,
+                takeoff_position_.y, takeoff_position_.z);
+    RCLCPP_INFO(node_ptr_->get_logger(), "Takeoff with angle: %f", takeoff_angle_);
+    RCLCPP_INFO(node_ptr_->get_logger(), "Takeoff with speed: %f", goal->takeoff_speed);
+    return true;
+  }
+
+  bool own_modify(std::shared_ptr<const as2_msgs::action::TakeOff::Goal> goal) override {
+    RCLCPP_INFO(node_ptr_->get_logger(), "Takeoff accepted");
+    takeoff_position_.x = actual_pose_.pose.position.x;
+    takeoff_position_.y = actual_pose_.pose.position.y;
+    takeoff_position_.z = actual_pose_.pose.position.z + goal->takeoff_height;
+    takeoff_angle_      = as2::frame::getYawFromQuaternion(actual_pose_.pose.orientation);
+    RCLCPP_INFO(node_ptr_->get_logger(), "Takeoff to position: %f, %f, %f", takeoff_position_.x,
+                takeoff_position_.y, takeoff_position_.z);
+    RCLCPP_INFO(node_ptr_->get_logger(), "Takeoff with angle: %f", takeoff_angle_);
+    RCLCPP_INFO(node_ptr_->get_logger(), "Takeoff with speed: %f", goal->takeoff_speed);
+    return true;
+  }
+
+  as2_behavior::ExecutionStatus own_run() override {
+    if (checkGoalCondition()) {
+      result_.takeoff_success = true;
+      RCLCPP_INFO(node_ptr_->get_logger(), "Goal succeeded");
+      return as2_behavior::ExecutionStatus::SUCCESS;
+    }
+
+    if (!position_motion_handler_->sendPositionCommandWithYawAngle(
+            "earth", takeoff_position_.x, takeoff_position_.y, takeoff_position_.z, takeoff_angle_,
+            "earth", goal_.takeoff_speed, goal_.takeoff_speed, goal_.takeoff_speed)) {
+      RCLCPP_ERROR(node_ptr_->get_logger(), "Take Off PLUGIN: Error sending speed command");
+      result_.takeoff_success = false;
+      return as2_behavior::ExecutionStatus::FAILURE;
+    }
+
+    return as2_behavior::ExecutionStatus::RUNNING;
+  }
+
+  void own_execution_end(const as2_behavior::ExecutionStatus &state) {
+    RCLCPP_INFO(node_ptr_->get_logger(), "Takeoff end");
+    if (state == as2_behavior::ExecutionStatus::SUCCESS) {
+      // Leave the drone in the last position
+      if (position_motion_handler_->sendPositionCommandWithYawAngle(
+              "earth", takeoff_position_.x, takeoff_position_.y, takeoff_position_.z,
+              takeoff_angle_, "earth", goal_.takeoff_speed, goal_.takeoff_speed,
+              goal_.takeoff_speed))
+        return;
+    }
+    sendHover();
+    return;
+  }
+
+private:
+  geometry_msgs::msg::Point takeoff_position_;
+  double takeoff_angle_;
+
+  bool checkGoalCondition() {
+    if (localization_received_) {
+      if (fabs(goal_.takeoff_height - feedback_.actual_takeoff_height) <
+          params_.takeoff_height_threshold)
+        return true;
+    }
+    return false;
   }
 
 };  // Plugin class
