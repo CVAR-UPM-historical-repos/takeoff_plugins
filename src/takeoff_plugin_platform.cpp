@@ -47,6 +47,7 @@ public:
   void ownInit() {
     platform_takeoff_cli_ =
         node_ptr_->create_client<std_srvs::srv::SetBool>(as2_names::services::platform::takeoff);
+    platform_takeoff_request_ = std::make_shared<std_srvs::srv::SetBool::Request>();
     platform_takeoff_request_->data = true;
     return;
   }
