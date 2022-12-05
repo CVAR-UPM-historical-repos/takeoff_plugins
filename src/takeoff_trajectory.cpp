@@ -135,7 +135,7 @@ public:
           RCLCPP_INFO(node_ptr_->get_logger(), "Trajectory generator goal accepted");
           traj_gen_goal_accepted_ = true;
         } else {
-          RCLCPP_INFO(node_ptr_->get_logger(), "Trajectory generator goal accepted");
+          RCLCPP_INFO(node_ptr_->get_logger(), "Trajectory generator goal rejected");
           result_.takeoff_success = false;
           return as2_behavior::ExecutionStatus::FAILURE;
         }
