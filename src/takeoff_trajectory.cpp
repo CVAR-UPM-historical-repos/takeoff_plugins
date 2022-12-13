@@ -62,24 +62,7 @@ public:
         std::bind(&Plugin::result_callback, this, std::placeholders::_1);
   }
 
-  bool on_deactivate(const std::shared_ptr<std::string> &message) override {
-    RCLCPP_INFO(node_ptr_->get_logger(), "Takeoff cancel");
-    // TODO: cancel trajectory generator
-    traj_gen_client_->async_cancel_goal(traj_gen_goal_handle_future_.get());
-    return false;
-  }
-
-  bool on_pause(const std::shared_ptr<std::string> &message) {
-    RCLCPP_INFO(node_ptr_->get_logger(), "Takeoff can not be paused, try to cancel it");
-    return false;
-  }
-
-  bool on_resume(const std::shared_ptr<std::string> &message) {
-    RCLCPP_INFO(node_ptr_->get_logger(), "Takeoff can not be resumed");
-    return false;
-  }
-
-  bool own_activate(std::shared_ptr<const as2_msgs::action::TakeOff::Goal> goal) override {
+  bool own_activate(as2_msgs::action::TakeOff::Goal &_goal) override {
     if (!traj_gen_client_->wait_for_action_server(std::chrono::seconds(2))) {
       RCLCPP_ERROR(node_ptr_->get_logger(), "Trajectory generator action server not available");
       return false;
@@ -87,7 +70,7 @@ public:
     RCLCPP_INFO(node_ptr_->get_logger(), "Trajectory generator action server available");
 
     as2_msgs::action::TrajectoryGenerator::Goal traj_generator_goal =
-        takeOffGoalToTrajectoryGeneratorGoal(goal);
+        takeOffGoalToTrajectoryGeneratorGoal(_goal);
 
     RCLCPP_INFO(node_ptr_->get_logger(), "Takeoff to position: %f, %f, %f",
                 traj_generator_goal.path[0].pose.position.x,
@@ -107,10 +90,10 @@ public:
     return true;
   }
 
-  bool own_modify(std::shared_ptr<const as2_msgs::action::TakeOff::Goal> goal) override {
+  bool own_modify(as2_msgs::action::TakeOff::Goal &_goal) override {
     RCLCPP_INFO(node_ptr_->get_logger(), "Takeoff modified");
     as2_msgs::action::TrajectoryGenerator::Goal traj_generator_goal =
-        takeOffGoalToTrajectoryGeneratorGoal(goal);
+        takeOffGoalToTrajectoryGeneratorGoal(_goal);
 
     RCLCPP_INFO(node_ptr_->get_logger(), "Takeoff to position: %f, %f, %f",
                 traj_generator_goal.path[0].pose.position.x,
@@ -125,20 +108,36 @@ public:
     return false;
   }
 
+  bool own_deactivate(const std::shared_ptr<std::string> &message) override {
+    RCLCPP_INFO(node_ptr_->get_logger(), "Takeoff cancel");
+    // TODO: cancel trajectory generator
+    RCLCPP_ERROR(node_ptr_->get_logger(), "Takeoff cancel not implemented yet");
+    traj_gen_client_->async_cancel_goal(traj_gen_goal_handle_future_.get());
+    return false;
+  }
+
+  void own_execution_end(const as2_behavior::ExecutionStatus &state) override {
+    RCLCPP_INFO(node_ptr_->get_logger(), "Takeoff end");
+    traj_gen_goal_accepted_   = false;
+    traj_gen_result_received_ = false;
+    traj_gen_result_          = false;
+    return;
+  }
+
   as2_behavior::ExecutionStatus own_run() override {
     if (!traj_gen_goal_accepted_) {
       if (traj_gen_goal_handle_future_.valid() &&
           traj_gen_goal_handle_future_.wait_for(std::chrono::seconds(0)) ==
               std::future_status::ready) {
         auto result = traj_gen_goal_handle_future_.get();
-        if (result) {
-          RCLCPP_INFO(node_ptr_->get_logger(), "Trajectory generator goal accepted");
-          traj_gen_goal_accepted_ = true;
-        } else {
-          RCLCPP_INFO(node_ptr_->get_logger(), "Trajectory generator goal rejected");
+        if (!result) {
+          // RCLCPP_WARN(node_ptr_->get_logger(), "Trajectory generator goal not accepted");
+          RCLCPP_ERROR(node_ptr_->get_logger(), "Trajectory generator goal not accepted");
           result_.takeoff_success = false;
           return as2_behavior::ExecutionStatus::FAILURE;
         }
+        RCLCPP_INFO(node_ptr_->get_logger(), "Trajectory generator goal accepted");
+        traj_gen_goal_accepted_ = true;
       } else {
         auto &clk = *node_ptr_->get_clock();
         RCLCPP_INFO_THROTTLE(node_ptr_->get_logger(), clk, 5000,
@@ -148,13 +147,12 @@ public:
     }
 
     if (traj_gen_result_received_) {
-      if (traj_gen_result_accepted_) {
+      result_.takeoff_success = traj_gen_result_;
+      if (traj_gen_result_) {
         RCLCPP_INFO(node_ptr_->get_logger(), "Takeoff successful");
-        result_.takeoff_success = true;
         return as2_behavior::ExecutionStatus::SUCCESS;
       } else {
         RCLCPP_INFO(node_ptr_->get_logger(), "Takeoff failed");
-        result_.takeoff_success = false;
         return as2_behavior::ExecutionStatus::FAILURE;
       }
     }
@@ -166,23 +164,16 @@ public:
     return as2_behavior::ExecutionStatus::RUNNING;
   }
 
-  void own_execution_end(const as2_behavior::ExecutionStatus &state) {
-    RCLCPP_INFO(node_ptr_->get_logger(), "Takeoff end");
-    return;
-  }
-
   void feedback_callback(
       GoalHandleTrajectoryGenerator::SharedPtr,
       const std::shared_ptr<const TrajectoryGeneratorAction::Feedback> feedback) {
-    RCLCPP_INFO(node_ptr_->get_logger(), "Feedback received");
     traj_gen_feedback_ = *feedback;
     return;
   }
 
   void result_callback(const GoalHandleTrajectoryGenerator::WrappedResult &result) {
-    RCLCPP_INFO(node_ptr_->get_logger(), "Result received");
     traj_gen_result_received_ = true;
-    traj_gen_result_accepted_ = result.result->trajectory_generator_success;
+    traj_gen_result_          = result.result->trajectory_generator_success;
     return;
   }
 
@@ -194,11 +185,11 @@ private:
 
   bool traj_gen_goal_accepted_   = false;
   bool traj_gen_result_received_ = false;
-  bool traj_gen_result_accepted_ = false;
+  bool traj_gen_result_          = false;
 
 private:
   as2_msgs::action::TrajectoryGenerator::Goal takeOffGoalToTrajectoryGeneratorGoal(
-      std::shared_ptr<const as2_msgs::action::TakeOff::Goal> _goal) {
+      const as2_msgs::action::TakeOff::Goal &_goal) {
     as2_msgs::action::TrajectoryGenerator::Goal traj_generator_goal;
 
     traj_generator_goal.header.stamp    = node_ptr_->now();
@@ -207,13 +198,13 @@ private:
     traj_generator_goal.yaw.mode  = as2_msgs::msg::YawMode::FIXED_YAW;
     traj_generator_goal.yaw.angle = as2::frame::getYawFromQuaternion(actual_pose_.pose.orientation);
 
-    traj_generator_goal.max_speed = _goal->takeoff_speed;
+    traj_generator_goal.max_speed = _goal.takeoff_speed;
 
     as2_msgs::msg::PoseWithID takeoff_pose;
     takeoff_pose.id              = "takeoff_point";
     takeoff_pose.pose.position.x = actual_pose_.pose.position.x;
     takeoff_pose.pose.position.y = actual_pose_.pose.position.y;
-    takeoff_pose.pose.position.z = actual_pose_.pose.position.z + _goal->takeoff_height;
+    takeoff_pose.pose.position.z = actual_pose_.pose.position.z + _goal.takeoff_height;
 
     traj_generator_goal.path.push_back(takeoff_pose);
 
