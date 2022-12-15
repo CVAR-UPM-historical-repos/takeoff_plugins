@@ -19,6 +19,7 @@ set(PROJECT_DEPENDENCIES
   rclcpp_action
   as2_core
   as2_msgs
+  std_msgs
   as2_behavior
   takeoff_plugin_base
   motion_reference_handlers
@@ -33,6 +34,7 @@ set(SOURCE_CPP_FILES
   src/takeoff_plugin_speed.cpp
   src/takeoff_plugin_position.cpp
   src/takeoff_plugin_platform.cpp
+  src/takeoff_trajectory.cpp
 )
 
 add_library(${PROJECT_NAME} ${SOURCE_CPP_FILES})
